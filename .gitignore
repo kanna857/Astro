@@ -1,0 +1,57 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Reports and temporary files
+eslint-report.*
+eslint-output.json
+eslint-log.txt
+test.js
+start.ps1
+
+# Local env files
+.env
+.env.local
+.env.*.local
+.env.test
+
+# Python
+backend/.venv/
+.venv/
+*/.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+
+# Model Files (Optional: keep if small, ignore if large)
+# backend/disease_model.pth
+
+# Data
+backend/data/
+dataset/
