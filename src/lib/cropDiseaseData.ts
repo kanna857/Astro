@@ -608,43 +608,53 @@ export const CROP_DISEASE_DATA: Record<string, CropDiseaseInfo> = {
 
 /**
  * Looks up disease info from a class key returned by the model.
- * Supports both exact match and partial match (for slight label variations).
+ * Supports exact match, normalized match, and fuzzy partial match.
+ * The current model (classes.json) outputs standard PlantVillage keys
+ * which directly match CROP_DISEASE_DATA (e.g. "Tomato___Bacterial_spot").
  */
 export function getCropDiseaseInfo(classKey: string): CropDiseaseInfo | null {
-  // Direct match
+  if (!classKey) return null;
+
+  // 1. Direct exact match (primary path for current model)
   if (CROP_DISEASE_DATA[classKey]) return CROP_DISEASE_DATA[classKey];
 
-  // The PyTorch model (`disease_model.pth`) was trained on a differently-named 15-class subset
-  // Example model outputs: "Pepper__bell___Bacterial_spot", "Tomato_Bacterial_spot", "Tomato__Tomato_mosaic_virus"
-  // Our new frontend keys: "Pepper,_bell___Bacterial_spot", "Tomato___Bacterial_spot", "Tomato___Tomato_mosaic_virus"
-  
-  // Cleanup mapping for the model's specific 15 labels to our new 38-class dictionary keys
-  const modelToDatasetMap: Record<string, string> = {
-    "Pepper__bell___Bacterial_spot": "Pepper,_bell___Bacterial_spot",
-    "Pepper__bell___healthy": "Pepper,_bell___healthy",
-    "Potato___Early_blight": "Potato___Early_blight",
-    "Potato___Late_blight": "Potato___Late_blight",
-    "Potato___healthy": "Potato___healthy",
-    "Tomato_Bacterial_spot": "Tomato___Bacterial_spot",
-    "Tomato_Early_blight": "Tomato___Early_blight",
-    "Tomato_Late_blight": "Tomato___Late_blight",
-    "Tomato_Leaf_Mold": "Tomato___Leaf_Mold",
-    "Tomato_Septoria_leaf_spot": "Tomato___Septoria_leaf_spot",
-    "Tomato_Spider_mites_Two_spotted_spider_mite": "Tomato___Spider_mites Two-spotted_spider_mite",
-    "Tomato__Target_Spot": "Tomato___Target_Spot",
-    "Tomato__Tomato_YellowLeaf__Curl_Virus": "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
-    "Tomato__Tomato_mosaic_virus": "Tomato___Tomato_mosaic_virus",
-    "Tomato_healthy": "Tomato___healthy"
+  // 2. Normalize separators: some model versions use single or double underscores
+  //    e.g. "Tomato__Bacterial_spot" -> "Tomato___Bacterial_spot"
+  const normalized = classKey
+    .replace(/_{2,}/g, '___')   // collapse 2+ underscores to triple
+    .replace(/,\s*/g, ',_');     // normalize comma spacing
+
+  if (CROP_DISEASE_DATA[normalized]) return CROP_DISEASE_DATA[normalized];
+
+  // 3. Manual alias map for any known edge-case label variants
+  const aliasMap: Record<string, string> = {
+    'Pepper__bell___Bacterial_spot':            'Pepper,_bell___Bacterial_spot',
+    'Pepper__bell___healthy':                   'Pepper,_bell___healthy',
+    'Tomato_Bacterial_spot':                    'Tomato___Bacterial_spot',
+    'Tomato_Early_blight':                      'Tomato___Early_blight',
+    'Tomato_Late_blight':                       'Tomato___Late_blight',
+    'Tomato_Leaf_Mold':                         'Tomato___Leaf_Mold',
+    'Tomato_Septoria_leaf_spot':                'Tomato___Septoria_leaf_spot',
+    'Tomato_Spider_mites_Two_spotted_spider_mite': 'Tomato___Spider_mites Two-spotted_spider_mite',
+    'Tomato__Target_Spot':                      'Tomato___Target_Spot',
+    'Tomato__Tomato_YellowLeaf__Curl_Virus':    'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
+    'Tomato__Tomato_mosaic_virus':              'Tomato___Tomato_mosaic_virus',
+    'Tomato_healthy':                           'Tomato___healthy',
+    'Corn_(maize)___Cercospora_leaf_spot_Gray_leaf_spot': 'Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot',
+    'Corn_(maize)___Common_rust':               'Corn_(maize)___Common_rust_',
   };
 
-  if (modelToDatasetMap[classKey] && CROP_DISEASE_DATA[modelToDatasetMap[classKey]]) {
-    return CROP_DISEASE_DATA[modelToDatasetMap[classKey]];
-  }
+  const aliasTarget = aliasMap[classKey];
+  if (aliasTarget && CROP_DISEASE_DATA[aliasTarget]) return CROP_DISEASE_DATA[aliasTarget];
 
-  // Try case-insensitive partial match as an absolute fallback
-  const normalized = classKey.toLowerCase().replace(/_/g, '');
-  const found = Object.entries(CROP_DISEASE_DATA).find(([key]) =>
-    key.toLowerCase().replace(/_/g, '').includes(normalized) || normalized.includes(key.toLowerCase().replace(/_/g, ''))
-  );
+  // 4. Fuzzy fallback: strip all non-alpha characters and do substring match
+  const strip = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const strippedKey = strip(classKey);
+  const found = Object.entries(CROP_DISEASE_DATA).find(([key]) => {
+    const strippedEntry = strip(key);
+    return strippedEntry === strippedKey ||
+           strippedEntry.includes(strippedKey) ||
+           strippedKey.includes(strippedEntry);
+  });
   return found ? found[1] : null;
 }

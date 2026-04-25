@@ -1,13 +1,11 @@
-import { useState, useRef } from 'react';
-import { Camera, Upload, X, Loader2, AlertTriangle, CheckCircle, Bug, Leaf, Droplets } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Camera, Upload, X, Loader2, AlertTriangle, CheckCircle, Leaf, Droplets, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { getCropDiseaseInfo } from '@/lib/cropDiseaseData';
 
 interface DiagnosisResult {
@@ -28,6 +26,8 @@ interface CameraUploadProps {
   fieldName?: string;
 }
 
+const BACKEND_URL = 'http://localhost:8000';
+
 export function CameraUpload({ cropType, fieldName }: CameraUploadProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,6 +36,21 @@ export function CameraUpload({ cropType, fieldName }: CameraUploadProps) {
   const [description, setDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [diagnosis, setDiagnosis] = useState<DiagnosisResult | null>(null);
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+
+  // Check backend health on mount
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/predict`, { method: 'HEAD' });
+        // 405 Method Not Allowed = server is up but doesn't accept HEAD on /predict (expected)
+        setBackendOnline(res.status !== 0);
+      } catch {
+        setBackendOnline(false);
+      }
+    };
+    checkBackend();
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,7 +92,7 @@ export function CameraUpload({ cropType, fieldName }: CameraUploadProps) {
       formData.append('file', selectedFile);
 
       // Call our local FastAPI Python backend
-      const response = await fetch('http://localhost:8000/predict', {
+      const response = await fetch(`${BACKEND_URL}/predict`, {
         method: 'POST',
         body: formData,
       });
@@ -149,7 +164,11 @@ export function CameraUpload({ cropType, fieldName }: CameraUploadProps) {
       toast({ title: 'Diagnosis Complete', description: 'AI has analyzed your crop image.' });
     } catch (err: unknown) {
       console.error('Diagnosis error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Please make sure the Python server is running.';
+      const isNetworkError = err instanceof TypeError && err.message.includes('fetch');
+      const errorMessage = isNetworkError
+        ? 'Cannot connect to AI backend. Run: cd backend && python -m uvicorn main:app --port 8000'
+        : (err instanceof Error ? err.message : 'Unknown error. Please try again.');
+      setBackendOnline(false);
       toast({ title: 'Diagnosis Failed', description: errorMessage, variant: 'destructive' });
     } finally {
       setIsAnalyzing(false);
@@ -174,9 +193,21 @@ export function CameraUpload({ cropType, fieldName }: CameraUploadProps) {
   return (
     <Card className="glass-card border-border/50">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Camera className="w-5 h-5 text-primary" />
-          Crop Photo Diagnosis
+        <CardTitle className="text-lg flex items-center gap-2 justify-between">
+          <div className="flex items-center gap-2">
+            <Camera className="w-5 h-5 text-primary" />
+            Crop Photo Diagnosis
+          </div>
+          {backendOnline === true && (
+            <Badge variant="outline" className="text-xs gap-1 text-green-400 border-green-400/30 bg-green-400/10">
+              <Wifi className="w-3 h-3" /> AI Online
+            </Badge>
+          )}
+          {backendOnline === false && (
+            <Badge variant="outline" className="text-xs gap-1 text-destructive border-destructive/30 bg-destructive/10">
+              <WifiOff className="w-3 h-3" /> AI Offline
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
